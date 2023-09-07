@@ -1,7 +1,7 @@
 select count(*) from customers as customers_count; -- считает покупателей
 
 select
-	concat(e.first_name, e.last_name) as name,
+	concat(e.first_name, ' ', e.last_name) as name,
 	count(s.sales_id) as operations,
 	floor(sum(s.quantity*p.price)) as income
 from employees e
@@ -9,20 +9,20 @@ left join sales s
 on s.sales_person_id = e.employee_id
 left join products p
 on p.product_id = s.product_id
-group by concat(e.first_name, e.last_name)
+group by concat(e.first_name, ' ', e.last_name)
 order by income desc nulls last
 limit 10; -- топ 10 продавцов с наибольшей выручкой
 
 with avg_income as (
 	select
-		concat(e.first_name, e.last_name) as name,
+		concat(e.first_name, ' ', e.last_name) as name,
 		coalesce(floor(avg(s.quantity*p.price)), 0) as average_income
 	from employees e
 	left join sales s
 	on s.sales_person_id = e.employee_id
 	left join products p
 	on p.product_id = s.product_id
-	group by concat(e.first_name, e.last_name)
+	group by concat(e.first_name, ' ', e.last_name)
 	order by average_income
 )
 select * from avg_income where average_income < (
@@ -42,7 +42,7 @@ select
 	income
 from (
 	select
-		concat(e.first_name, e.last_name) as name,
+		concat(e.first_name, ' ', e.last_name) as name,
 		to_char(s.sale_date, 'id') as weekday_n,
 		floor(sum(s.quantity*p.price)) as income
 	from employees e
@@ -50,6 +50,56 @@ from (
 	on s.sales_person_id = e.employee_id
 	left join products p
 	on p.product_id = s.product_id
-	group by concat(e.first_name, e.last_name), weekday_n
+	group by concat(e.first_name, ' ', e.last_name), weekday_n
 	order by weekday_n, name
 ) as result; -- прибыль по продовцам по дням недели
+
+select
+	case
+		when age between 16 and 25 then '16-25'
+		when age between 26 and 40 then '26-40'
+		when age > 40 then '40+'
+	end as age_category,
+	count (customer_id)
+from customers c
+group by age_category
+order by age_category; -- количество покупателей по возрастным категориям
+
+select
+	to_char(sale_date, 'YYYY-MM') as date,
+	sum(total_customers) as total_customers,
+	sum(income) as income
+from (
+	select
+		s.sale_date,
+		count(distinct s.customer_id) as total_customers,
+		floor(sum(s.quantity * p.price)) as income
+	from sales s
+	inner join products p
+	on p.product_id = s.product_id
+	group by sale_date
+) as result
+group by date
+order by date; -- количество уникальных покупателей и прибыль по месяцам
+
+with row_date_customer as (
+	select
+		s.customer_id,
+		concat(c.first_name, ' ', c.last_name) as customer,
+		s.sale_date,
+		concat(e.first_name, ' ', e.last_name) as saller,
+		p.price,
+		row_number() over (partition by s.customer_id order by s.sale_date)
+	from sales s
+	inner join customers c
+	on c.customer_id = s.customer_id
+	inner join employees e
+	on e.employee_id = s.sales_person_id
+	inner join products p
+	on p.product_id = s.product_id
+)
+select customer, sale_date, saller
+from row_date_customer
+where row_number = 1 and price = 0
+order by customer_id; -- покупатели с первой покупкой по акции
+
